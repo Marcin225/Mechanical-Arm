@@ -85,7 +85,7 @@ The **analog joystick** is used to control the gripper in this mode.
 
 ## Circuit Diagram
 
-![Circuit diagram](docs/schematic.jpg)
+![Circuit diagram](docs/schematic.png)
 
 ---
 
