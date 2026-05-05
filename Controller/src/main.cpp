@@ -10,13 +10,18 @@ bool prevPressed = false;
 
 void setup() {
     Serial.begin(115200);
-    while (!Serial) { }
-
+    
     Wire.begin(); 
 
+    // Init and connect to HM-10 (BLE)
+
     BLE_Init(BLE_MAC, BLE_UUID_SVC, BLE_UUID_CHR);
+
+    delay(2000);
+
+    BLE_Connect();
     
-    if (!sysCtx.mpuSensor.begin()) {
+    if (!sysCtx.mpuSensor.begin()) {  // MPU6050 INIT
         Serial.println("MPU6050 Init error / not found!");
         while (1) { delay(10); }
     }
@@ -36,8 +41,9 @@ void setup() {
 }
 
 void loop() {
-    BLE_MaintainConnection();
+    BLE_MaintainConnection(); // attempt reconnect if connection droped
 
+    // read joystick values (gripper and operating mode)
     sysCtx.xRaw = analogRead(PIN_X);
     sysCtx.yValue = analogRead(PIN_Y);
     
@@ -47,7 +53,7 @@ void loop() {
         lastToggleMs = millis();
     }
     prevPressed = pressed;
-
+    // filter MPU data before complementary filter
     MpuSample s;
     if (sysCtx.mpuSensor.readSample(s)) {
         float dt = 0.01f; 
@@ -62,6 +68,8 @@ void loop() {
         float accRoll = atan2(ay, az) * 180.0f / PI;
         float accPitch = atan2(-ax, sqrtf(ay*ay + az*az)) * 180.0f / PI;
 
+        // MPU sensor is rotated we need to map IMU axes
+
         float robot_accRoll = accPitch;
         float robot_accPitch = -accRoll;
         float robot_gyroRollRate = gy;
@@ -72,10 +80,12 @@ void loop() {
 
     updateAngles(sysCtx);
 
+    // BLE packet
+
     if (millis() - lastBleSendMs >= 20) {
         BLE_SendAngles(sysCtx.waist, sysCtx.shoulder, sysCtx.elbow, sysCtx.wrist_roll, sysCtx.wrist_pitch, sysCtx.gripper);
         lastBleSendMs = millis();
     }
     
-    delay(1);
+    delay(15);
 }

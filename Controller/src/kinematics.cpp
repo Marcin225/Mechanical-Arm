@@ -1,6 +1,8 @@
 #include "kinematics.h"
 #include <Arduino.h>
 
+// preserves the last known positions of joints when switching control modes
+
 static int waist_hold = 90;
 static int shoulder_hold = 45;
 static int wrist_roll_hold = 90;
@@ -12,6 +14,12 @@ static int shoulder_out_prev = 45;
 static int wrist_roll_out_prev = 90;
 static int wrist_pitch_out_prev = 90;
 static uint8_t mode_prev = 0;
+
+// function maps joystick and IMU inputs to servo positions 
+// while applying mechanical limits and deadzones
+// it manages two distinct control modes: base control (Mode 0) and wrist control 
+// (Mode 1), automatically freezing inactive joints and coupling the elbow 
+// angle to maintain the arm's stability
 
 void updateAngles(SystemContext& sysCtx) {
     if (sysCtx.xRaw <= 1942 + 5) {

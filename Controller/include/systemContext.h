@@ -1,6 +1,8 @@
 #ifndef SYSTEM_CONTEXT_H
 #define SYSTEM_CONTEXT_H
 
+// central container grouping system variables to prevent code duplication 
+
 #include <stdint.h>
 #include <Arduino.h>
 #include <NimBLEDevice.h>

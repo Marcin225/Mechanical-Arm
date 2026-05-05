@@ -1,6 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// main project settings: hardware pins, Bluetooth details, and sensor tuning
+
 #define PIN_X 4
 #define PIN_Y 5
 

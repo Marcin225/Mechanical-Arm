@@ -3,9 +3,9 @@
 #include <NimBLEDevice.h>
 #include <string>
 
-static std::string targetMac;
-static std::string targetSvc;
-static std::string targetChr;
+static const char* targetMac = nullptr;
+static const char* targetSvc = nullptr;
+static const char* targetChr = nullptr;
 
 static NimBLEClient* pClient = nullptr;
 static NimBLERemoteCharacteristic* pChr = nullptr;
@@ -13,26 +13,43 @@ static NimBLERemoteCharacteristic* pChr = nullptr;
 static uint32_t nextTry = 0;
 static bool isConnected = false;
 
+static void onNotify(NimBLERemoteCharacteristic* pChr, uint8_t* pData, size_t length, bool isNotify) {
+    // empty for future communication
+}
+
+// attempts connection using both Public and Random address types 
+// discovers the required service and characteristic
+
 bool BLE_Connect() {
     if (!pClient) {
         pClient = NimBLEDevice::createClient();
     }
 
-    NimBLEAddress aPub(targetMac, BLE_ADDR_PUBLIC);
+    NimBLEAddress aPub(std::string(targetMac), BLE_ADDR_PUBLIC);
     if (!pClient->connect(aPub)) {
-        NimBLEAddress aRnd(targetMac, BLE_ADDR_RANDOM);
+        NimBLEAddress aRnd(std::string(targetMac), BLE_ADDR_RANDOM);
         if (!pClient->connect(aRnd)) {
             return false;
         }
     }
 
     auto* pSvc = pClient->getService(NimBLEUUID(targetSvc));
-    if (!pSvc) { pClient->disconnect(); return false; }
+    if (!pSvc) { 
+        pClient->disconnect(); 
+        return false; 
+    }
     
     pChr = pSvc->getCharacteristic(NimBLEUUID(targetChr));
-    if (!pChr) { pClient->disconnect(); return false; }
+    if (!pChr) { 
+        pClient->disconnect(); 
+        return false; 
+    }
 
-    Serial.println("[BLE] Polaczono z HM-10!");
+    if (pChr->canNotify()) {
+        pChr->subscribe(true, onNotify);
+    }
+
+    Serial.println("[BLE] connected");
     isConnected = true;
     return true;
 }
@@ -58,12 +75,14 @@ void BLE_MaintainConnection() {
     }
 
     if (millis() >= nextTry) {
-        Serial.println("[BLE] Szukam HM-10...");
         if (!BLE_Connect()) {
-            nextTry = millis() + 2000; 
+            nextTry = millis() + 1000; // Zmienione na 1000ms tak jak w starym kodzie
         }
     }
 }
+
+// send angles of joints in 8 byte package:
+// [Header(0xAA)] [Waist] [Shoulder] [Elbow] [Roll] [Pitch] [Gripper] [Checksum]
 
 void BLE_SendAngles(int waist, int shoulder, int elbow, int wrist_roll, int wrist_pitch, int gripper) {
     if (!isConnected || !pChr) return;

@@ -21,7 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "PCA9685.h"
+#include "helpers.h"
 
+#define BUFFER_SIZE           32
+#define MAX_SERVO_SPEED       2
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -44,14 +48,24 @@ I2C_HandleTypeDef hi2c1;
 
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_usart3_rx;
 
 /* USER CODE BEGIN PV */
+uint8_t rxBuffer[BUFFER_SIZE];  // DMA buffer for incoming joints angle packets
+
+// servo mapping to PCA9685 outputs
+static const uint8_t id_to_channel[7] = {0, 15, 14, 13, 12, 11, 10};
+
+// current and target angle for smooth servo movement without jerking
+static uint8_t currentAngle[6] = {90, 60, 45, 90, 90, 15};
+static volatile uint8_t targetAngle[6] = {90, 60, 45, 90, 90, 15};
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
@@ -61,6 +75,45 @@ static void MX_USART3_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// handles incoming esp32 servo control frame, first and last byte are used for validation
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t size) {
+  if (huart->Instance == USART3) {
+    for (int i=0; i < size; i++) {
+      if (rxBuffer[i] == 0xAA) {
+        if (size - i >= 8) {
+          uint8_t waist = rxBuffer[i+1];
+          uint8_t shoulder = rxBuffer[i+2];
+          uint8_t elbow = rxBuffer[i+3];
+          uint8_t wristRoll = rxBuffer[i+4];
+          uint8_t wristPitch = rxBuffer[i+5];
+          uint8_t gripper = rxBuffer[i+6];
+          uint8_t checkSum = rxBuffer[i+7];
+
+          uint8_t sum = waist + shoulder + elbow + wristRoll + wristPitch + gripper;
+          if (checkSum == sum) {
+            targetAngle[0] = waist;
+            targetAngle[1] = shoulder;
+            targetAngle[2] = elbow;
+            targetAngle[3] = wristRoll;
+            targetAngle[4] = wristPitch;
+            targetAngle[5] = gripper;
+
+            break;
+          } 
+        }
+      }
+    }
+    // clear UART flags and restart DMA reception to keep communication stable
+
+    __HAL_UART_CLEAR_OREFLAG(&huart3);
+    __HAL_UART_CLEAR_IDLEFLAG(&huart3);
+    huart3.ErrorCode = HAL_UART_ERROR_NONE;
+
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart3, rxBuffer, BUFFER_SIZE);
+    __HAL_DMA_DISABLE_IT(&hdma_usart3_rx, DMA_IT_HT);
+  }
+}
 
 /* USER CODE END 0 */
 
@@ -93,19 +146,51 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
+
+  // clear UART flags and restart DMA reception to keep communication stable
+  __HAL_UART_CLEAR_OREFLAG(&huart3);
+  __HAL_UART_CLEAR_IDLEFLAG(&huart3);
+  huart3.ErrorCode = HAL_UART_ERROR_NONE;
+
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart3, rxBuffer, BUFFER_SIZE);
+  __HAL_DMA_DISABLE_IT(&hdma_usart3_rx, DMA_IT_HT);
+
+  PCA9685_Init(&hi2c1, 50);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
-  {
-    /* USER CODE END WHILE */
+  { 
+    // smoothly update servo positions toward target angles without sudden jerking
+    for (int i = 0; i < 6; i++) {
+      int diff = targetAngle[i] - currentAngle[i];
+
+      if (ABS_filter(diff) < 1) {
+        currentAngle[i] = targetAngle[i];
+      }else {
+        if (diff > MAX_SERVO_SPEED) {
+          diff = MAX_SERVO_SPEED;
+        }
+        
+        if (diff < -MAX_SERVO_SPEED) {
+          diff = -MAX_SERVO_SPEED;
+        }
+
+        currentAngle[i] += diff;
+      }
+
+      PCA9685_SetServoAngle(id_to_channel[i+1], (uint8_t)currentAngle[i]);
+    }
     
+    HAL_Delay(10);
+    /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
@@ -276,6 +361,22 @@ static void MX_USART3_UART_Init(void)
   /* USER CODE BEGIN USART3_Init 2 */
 
   /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel3_IRQn);
 
 }
 

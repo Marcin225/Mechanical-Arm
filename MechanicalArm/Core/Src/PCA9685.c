@@ -1,15 +1,8 @@
 #include "PCA9685.h"
 
-#define PCA9685_ADDRESS                 0x80  // 0x40 << 1
-#define PCA9685_MODE1                   0x0
-#define PCA9685_PRE_SCALE               0xFE
-#define PCA9685_LED0_ON_L               0x6
-#define PCA9685_MODE1_SLEEP             4
-#define PCA9685_MODE1_AI                5
-#define PCA9685_MODE1_RESTART           7
-
-
 static I2C_HandleTypeDef *pca_i2c;
+
+// modifies a single bit in a target register 
 
 static void PCA9685_SetBit(uint8_t Register, uint8_t Bit, uint8_t Value)
 {
@@ -23,6 +16,7 @@ static void PCA9685_SetBit(uint8_t Register, uint8_t Bit, uint8_t Value)
     HAL_Delay(1);
 }
 
+// calculates and applies the internal oscillator prescaler for the desired PWM frequency
 static void PCA9685_SetPWMFrequency(uint16_t frequency)
 {
     uint8_t prescale;
@@ -30,6 +24,7 @@ static void PCA9685_SetPWMFrequency(uint16_t frequency)
     else if(frequency <= 24) prescale = 0xFF;
     else prescale = 25000000 / (4096 * frequency);
 
+    // to update prescaler module must be put to sleep
     PCA9685_SetBit(PCA9685_MODE1, PCA9685_MODE1_SLEEP_BIT, 1);
     HAL_I2C_Mem_Write(pca_i2c, PCA9685_ADDRESS, PCA9685_PRE_SCALE, 1, &prescale, 1, 10);
     HAL_Delay(20);
@@ -39,11 +34,11 @@ static void PCA9685_SetPWMFrequency(uint16_t frequency)
 
 void PCA9685_Init(I2C_HandleTypeDef *hi2c, uint16_t frequency)
 {
-    pca_i2c = hi2c; // Przypisanie wskaźnika
+    pca_i2c = hi2c;
     PCA9685_SetPWMFrequency(frequency); 
-    PCA9685_SetBit(PCA9685_MODE1, PCA9685_MODE1_AI_BIT, 1);
+    PCA9685_SetBit(PCA9685_MODE1, PCA9685_MODE1_AI_BIT, 1); // enable auto-increment 
 }
-
+// sends raw start and stop time ticks (0-4095) to a specific PWM channel
 void PCA9685_SetPWM(uint8_t Channel, uint16_t OnTime, uint16_t OffTime)
 {
     uint8_t registerAddress = PCA9685_LED0_ON_L + (4 * Channel);
@@ -57,14 +52,13 @@ void PCA9685_SetPWM(uint8_t Channel, uint16_t OnTime, uint16_t OffTime)
     HAL_I2C_Mem_Write(pca_i2c, PCA9685_ADDRESS, registerAddress, 1, pwm, 4, 10);
 }
 
+//maps a 0-180 degree angle into PWM ticks and moves the servo
 void PCA9685_SetServoAngle(uint8_t Channel, uint8_t Angle)
 {
-    // Zabezpieczenie przed błędem z zewnątrz
     if (Angle > 180) Angle = 180;
 
-    // Przekształcona, znacznie szybsza matematyka stałoprzecinkowa 
-    // Odpowiednik (Angle * (512 - 102) / 180) + 102
-    // Skrócony ułamek (Angle * 410 / 180) to (Angle * 41 / 18)
+    // converts 0-180 degrees into a 410-tick range (2 ms servo pulse)
+    // 4095 -> 20 ms | 410 -> 2 ms
     uint16_t Value = (Angle * 41) / 18 + SERVO_MIN_TICK;
     
     PCA9685_SetPWM(Channel, 0, Value);
