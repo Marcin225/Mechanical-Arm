@@ -146,7 +146,6 @@ MECHANICALARMPROJECT/
   Clone the repository:
   ```
   git clone https://github.com/Marcin225/Mechanical-Arm
-  cd MechanicalArmProject
   ```
   
   ### Controller

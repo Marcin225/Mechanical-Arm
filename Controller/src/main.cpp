@@ -87,5 +87,5 @@ void loop() {
         lastBleSendMs = millis();
     }
     
-    delay(15);
+    delay(10);
 }
