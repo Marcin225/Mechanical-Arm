@@ -15,7 +15,7 @@ The project uses **BLE communication**, a **PCA9685 PWM servo driver**, and cust
 
 ## Demo
 
-[Watch the demo video](https://www.youtube.com/shorts/1-4nBzwr-3U)
+https://github.com/user-attachments/assets/011af8a8-35c7-4f81-aa71-7b3c234a87f0
 
 ---
 
